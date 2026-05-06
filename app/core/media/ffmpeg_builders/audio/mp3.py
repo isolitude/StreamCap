@@ -27,4 +27,4 @@ class MP3CommandBuilder(FFmpegCommandBuilder):
 
         # fmt: on
         command.extend(additional_commands)
-        return command
+        return self._inject_metadata(command)
