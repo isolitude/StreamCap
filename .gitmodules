@@ -1,0 +1,3 @@
+[submodule "streamget"]
+	path = streamget
+	url = https://github.com/isolitude/streamget
