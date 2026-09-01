@@ -13,14 +13,13 @@ class TrayManager:
         self.icon_path = None
         self.tray_thread = None
         self.is_running = False
-        self.execute_dir = getattr(app, "run_path", os.getcwd())
-        self.assets_dir = "assets"
+        self.assets_dir = getattr(app, "assets_dir", os.path.join(os.getcwd(), "assets"))
 
     def create_image(self):
         try:
             from PIL import Image
 
-            self.icon_path = os.path.join(self.execute_dir, self.assets_dir, "icons", "tray_icon.ico")
+            self.icon_path = os.path.join(self.assets_dir, "icons", "tray_icon.ico")
             if os.path.exists(self.icon_path):
                 return Image.open(self.icon_path)
         except Exception as e:
@@ -44,6 +43,8 @@ class TrayManager:
             def on_restore(_icon, _item):
                 page.window.visible = True
                 page.window.minimized = False
+                page.window.focused = True
+                page.run_task(page.window.to_front)
                 page.update()
 
             def on_exit(_icon, _item):
@@ -66,7 +67,7 @@ class TrayManager:
         except ImportError as e:
             logger.error(e)
             self.is_running = False
-            page.window.destroy()
+            page.run_task(page.window.destroy)
             raise e
 
     def start(self, page: ft.Page):

@@ -151,7 +151,7 @@ class RecordingCardManager:
             on_click=lambda e, rec=recording: self.app.page.run_task(self.recording_card_on_click, e, rec),
             bgcolor=self.get_card_background_color(recording),
             border_radius=5,
-            border=ft.border.all(2, self.get_card_border_color(recording)),
+            border=ft.Border.all(2, self.get_card_border_color(recording)),
         )
         card = ft.Card(key=str(recording.rec_id), content=card_container)
 
@@ -239,7 +239,7 @@ class RecordingCardManager:
 
                 if recording_card["card"] and recording_card["card"].content:
                     recording_card["card"].content.bgcolor = self.get_card_background_color(recording)
-                    recording_card["card"].content.border = ft.border.all(2, self.get_card_border_color(recording))
+                    recording_card["card"].content.border = ft.Border.all(2, self.get_card_border_color(recording))
                     try:
                         self.app.page.update()
                     except (ft.FletPageDisconnectedException, AssertionError) as e:
@@ -279,7 +279,7 @@ class RecordingCardManager:
 
         await self.update_card(recording)
         self.app.page.pubsub.send_others_on_topic("update", recording)
-        self.app.page.run_task(self.app.record_manager.persist_recordings)
+        self.app.services.run_coro(self.app.record_manager.persist_recordings())
 
     async def show_recording_info_dialog(self, recording: Recording):
         """Display a dialog with detailed information about the recording."""
@@ -339,6 +339,10 @@ class RecordingCardManager:
                 await self.app.snack_bar.show_snack_bar(self._["please_stop_monitor_tip"])
                 return
             await self.app.record_manager.delete_recording_cards([recording])
+            current_page = getattr(self.app, "current_page", None)
+            if current_page is not None and getattr(current_page, "page_name", None) == "recordings":
+                current_page.content_area.controls[1] = current_page.create_filter_area()
+                current_page.content_area.update()
             await self.app.snack_bar.show_snack_bar(
                 self._["delete_recording_success_tip"], bgcolor=ft.Colors.PRIMARY, duration=2000
             )
@@ -400,6 +404,11 @@ class RecordingCardManager:
             await asyncio.sleep(update_interval)
             if not recording or recording.rec_id not in self.cards_obj:  # Stop task if card is removed
                 break
+
+            # Skip update when not on recordings page (cards are detached from page tree)
+            current_page = getattr(self.app, "current_page", None)
+            if not current_page or getattr(current_page, "page_name", None) != "recordings":
+                continue
 
             if recording.is_recording:
                 try:
@@ -495,8 +504,9 @@ class RecordingCardManager:
             video_files = []
             for root, _, files in os.walk(recording.recording_dir):
                 for file in files:
-                    if utils.is_valid_video_file(file):
-                        video_files.append(os.path.join(root, file))
+                    file_str = str(file)
+                    if utils.is_valid_video_file(file_str):
+                        video_files.append(os.path.join(str(root), file_str))
 
             if video_files:
                 video_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)

@@ -7,7 +7,7 @@ class NUTCommandBuilder(FFmpegCommandBuilder):
         # fmt: off
         if self.segment_record:
             additional_commands = [
-                "-c:v", "copy",
+                *self._get_video_codec_options(),
                 "-c:a", "copy",
                 "-map", "0",
                 "-f", "segment",
@@ -20,7 +20,7 @@ class NUTCommandBuilder(FFmpegCommandBuilder):
             ]
         else:
             additional_commands = [
-                "-c:v", "copy",
+                *self._get_video_codec_options(),
                 "-c:a", "copy",
                 "-map", "0",
                 "-f", "nut",
@@ -31,4 +31,4 @@ class NUTCommandBuilder(FFmpegCommandBuilder):
 
         # fmt: on
         command.extend(additional_commands)
-        return command
+        return self._inject_metadata(command)

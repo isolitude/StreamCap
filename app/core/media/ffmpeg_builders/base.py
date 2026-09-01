@@ -21,6 +21,10 @@ FFMPEG_USER_AGENT = (
     "SamsungBrowser/14.2 Chrome/87.0.4280.141 Mobile Safari/537.36"
 )
 
+# HLS streams from these platforms may use media segment extensions that do
+# not match the container detected by FFmpeg.
+RELAXED_HLS_EXTENSION_CHECK_PLATFORMS = ["chzzk"]
+
 
 class FFmpegCommandBuilder(abc.ABC):
     """
@@ -36,6 +40,8 @@ class FFmpegCommandBuilder(abc.ABC):
         full_path: str | None = None,
         headers: str | None = None,
         proxy: str | None = None,
+        platform_key: str | None = None,
+        video_bitrate: int | None = None,
         metadata: dict | None = None,
     ):
         """
@@ -48,6 +54,8 @@ class FFmpegCommandBuilder(abc.ABC):
         :param full_path: Full path where the output file will be saved.
         :param headers: Additional headers to include in the request.
         :param proxy: Proxy server URL to use for the connection.
+        :param platform_key: Platform identifier used for platform-specific FFmpeg compatibility options.
+        :param video_bitrate: Custom output video bitrate in kbps. Enables H.264 transcoding when set.
         :param metadata: Optional dict of metadata tags to embed (e.g. title, artist, album).
         """
         self.record_url = record_url
@@ -57,6 +65,8 @@ class FFmpegCommandBuilder(abc.ABC):
         self.full_path = full_path or ""
         self.proxy = proxy or ""
         self.headers = headers or ""
+        self.platform_key = platform_key
+        self.video_bitrate = video_bitrate
         self.metadata = metadata or {}
 
     def _get_metadata_args(self) -> list[str]:
@@ -84,6 +94,11 @@ class FFmpegCommandBuilder(abc.ABC):
         :return: List of strings representing the FFmpeg command components.
         """
         config = OVERSEAS_CONFIG if self.is_overseas else DEFAULT_CONFIG
+        hls_input_options = []
+        if self.platform_key in RELAXED_HLS_EXTENSION_CHECK_PLATFORMS:
+            # FFmpeg 8 rejects container/extension mismatches in strict mode.
+            hls_input_options = ["-extension_picky", "0"]
+
         # fmt: off
         command = [
             "ffmpeg",
@@ -99,6 +114,7 @@ class FFmpegCommandBuilder(abc.ABC):
             "-probesize", config["probesize"],
             "-fflags", "+discardcorrupt+igndts",
             "-re",
+            *hls_input_options,
             "-i", self.record_url,
             "-bufsize", config["bufsize"],
             "-sn",
@@ -122,3 +138,8 @@ class FFmpegCommandBuilder(abc.ABC):
             command.insert(2, self.proxy)
 
         return command
+
+    def _get_video_codec_options(self) -> list[str]:
+        if self.video_bitrate:
+            return ["-c:v", "libx264", "-preset", "veryfast", "-b:v", f"{self.video_bitrate}k"]
+        return ["-c:v", "copy"]

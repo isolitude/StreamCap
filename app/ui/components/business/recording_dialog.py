@@ -28,9 +28,10 @@ class RecordingDialog:
         initial_values = self.recording.to_dict() if self.recording else {}
 
         config = RecordingConfig(initial_values, self.app.settings.user_config)
-        default_record_format = config.get_value("record_format", "video_format", VideoFormat.TS)
+        default_record_format = config.get_value("record_format", "video_format", VideoFormat.TS).upper()
         default_record_type = "video" if default_record_format in VideoFormat.get_formats() else "audio"
         default_record_quality = config.get_value("quality", "record_quality", VideoQuality.OD)
+        default_video_bitrate = initial_values.get("video_bitrate")
         segment_record = config.get_value("segment_record", "segmented_recording_enabled", False)
         segment_time = config.get_value("segment_time", "video_segment_time", 1800)
         only_notify_no_record = config.get_value("only_notify_no_record", default=False)
@@ -50,31 +51,32 @@ class RecordingDialog:
             else:
                 record_format_field.options = [ft.dropdown.DropdownOption(i) for i in AudioFormat.get_formats()]
             record_format_field.value = record_format_field.options[0].key
+            video_bitrate_field.visible = e.control.value == "video"
             record_format_field.update()
+            video_bitrate_field.update()
 
         async def on_quality_change(e):
             """当画质选择改变时，如果选择了AD（仅音频），自动切换到音频格式"""
             selected_quality = e.control.value
             if selected_quality == VideoQuality.AD:
-                # 切换到音频模式
                 media_type_dropdown.value = "audio"
-                media_type_dropdown.disabled = True  # 禁用媒体类型选择
-                # 更新格式选项为音频格式
-                record_format_field.options = [ft.dropdown.Option(i) for i in AudioFormat.get_formats()]
+                media_type_dropdown.disabled = True
+                record_format_field.options = [ft.dropdown.DropdownOption(i) for i in AudioFormat.get_formats()]
                 if record_format_field.value not in AudioFormat.get_formats():
                     record_format_field.value = AudioFormat.M4A
+                video_bitrate_field.visible = False
             else:
-                # 恢复媒体类型选择的可用性
                 media_type_dropdown.disabled = False
-                # 如果当前是音频模式，切换回视频模式
                 if media_type_dropdown.value == "audio":
                     media_type_dropdown.value = "video"
-                    record_format_field.options = [ft.dropdown.Option(i) for i in VideoFormat.get_formats()]
+                    record_format_field.options = [ft.dropdown.DropdownOption(i) for i in VideoFormat.get_formats()]
                     if record_format_field.value not in VideoFormat.get_formats():
                         record_format_field.value = VideoFormat.TS
+                    video_bitrate_field.visible = True
 
             media_type_dropdown.update()
             record_format_field.update()
+            video_bitrate_field.update()
 
         url_field = ft.TextField(
             label=self._["input_live_link"],
@@ -131,7 +133,18 @@ class RecordingDialog:
             filled=False,
             value=default_record_quality,
             width=245,
-            on_change=on_quality_change,
+            on_select=on_quality_change,
+        )
+
+        video_bitrate_field = ft.TextField(
+            label=self._["custom_video_bitrate"],
+            hint_text=self._["custom_video_bitrate_hint"],
+            border_radius=5,
+            filled=False,
+            keyboard_type=ft.KeyboardType.NUMBER,
+            value=str(default_video_bitrate) if default_video_bitrate else "",
+            width=500,
+            visible=default_record_type == "video",
         )
 
         flv_use_direct_download_dropdown = ft.Dropdown(
@@ -196,8 +209,8 @@ class RecordingDialog:
         )
 
         scheduled_recording = initial_values.get("scheduled_recording", False)
-        scheduled_start_time = initial_values.get("scheduled_start_time", "")
-        monitor_hours = initial_values.get("monitor_hours", "5")
+        scheduled_start_time = initial_values.get("scheduled_start_time", "") or ""
+        monitor_hours = initial_values.get("monitor_hours", "5") or ""
         message_push_enabled = initial_values.get("enabled_message_push", True)
 
         time_slots = 2
@@ -206,7 +219,7 @@ class RecordingDialog:
         time_buttons = []
         time_picker_handlers = []
 
-        time_values = scheduled_start_time.split(",")
+        time_values = str(scheduled_start_time).split(",")
         time_values = (time_values + [""] * time_slots)[:time_slots]
 
         hour_values = str(monitor_hours).split(",")
@@ -359,11 +372,12 @@ class RecordingDialog:
                             ft.Container(
                                 content=ft.Column(
                                     [
-                                        ft.Container(margin=ft.margin.only(top=10)),
+                                        ft.Container(margin=ft.Margin.only(top=10)),
                                         url_field,
                                         streamer_name_field,
                                         format_row,
                                         quality_row,
+                                        video_bitrate_field,
                                         recording_dir_field,
                                         segment_setting_dropdown,
                                         segment_input,
@@ -377,7 +391,7 @@ class RecordingDialog:
                                     scroll=ft.ScrollMode.AUTO,
                                 )
                             ),
-                            ft.Container(content=batch_input, margin=ft.margin.only(top=15)),
+                            ft.Container(content=batch_input, margin=ft.Margin.only(top=15)),
                         ],
                         expand=True,
                     ),
@@ -401,6 +415,20 @@ class RecordingDialog:
             existing_recordings = get_existing_recordings()
 
             if tabs.selected_index == 0:
+                video_bitrate = None
+                bitrate_value = (
+                    (video_bitrate_field.value or "").strip() if media_type_dropdown.value == "video" else ""
+                )
+                if bitrate_value:
+                    try:
+                        video_bitrate = int(bitrate_value)
+                        if video_bitrate <= 0:
+                            raise ValueError
+                    except ValueError:
+                        video_bitrate_field.error_text = self._["custom_video_bitrate_invalid"]
+                        video_bitrate_field.update()
+                        return
+
                 quality_info = self._[quality_dropdown.value]
 
                 if not streamer_name_field.value:
@@ -426,6 +454,7 @@ class RecordingDialog:
                         "streamer_name": anchor_name,
                         "record_format": record_format_field.value,
                         "quality": quality_dropdown.value,
+                        "video_bitrate": video_bitrate,
                         "quality_info": quality_info,
                         "title": title,
                         "speed": "X KB/s",
