@@ -26,4 +26,10 @@
 # Static Assets (Adjust as needed)
 **/.iconset/
 **/*.icns
-assets/images
+# Exclude large desktop-only images from the Docker context, but keep the web sidebar logo
+assets/images/*
+!assets/images/logo-mark.svg
+# Offline fallback fonts are downloaded during the build (scripts/download_fallback_fonts.py);
+# exclude any locally-downloaded copies to keep the build context lean and non-stale.
+# (AlibabaPuHuiTi is kept — it is an app font baked into the image via COPY . .)
+assets/fonts/noto*/

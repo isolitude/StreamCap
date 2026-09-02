@@ -81,6 +81,15 @@ target/
 profile_default/
 ipython_config.py
 
+# Flutter/Flet offline fallback fonts (downloaded at Docker build time via scripts/download_fallback_fonts.py)
+assets/fonts/noto*/
+assets/fonts/notosans/
+assets/fonts/notosanssc/
+assets/fonts/notosanstc/
+assets/fonts/notosanshk/
+assets/fonts/notosansjp/
+assets/fonts/notosanskr/
+
 # client
 /config/accounts.json
 /config/user_settings.json
