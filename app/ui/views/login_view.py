@@ -30,6 +30,7 @@ class LoginPage:
             bgcolor="#f5f5f5",
             color="#333333",
             label_style=ft.TextStyle(color="#666666"),
+            autofill_hints=[ft.AutofillHint.USERNAME],
         )
 
         self.password_field = ft.TextField(
@@ -45,6 +46,7 @@ class LoginPage:
             bgcolor="#f5f5f5",
             color="#333333",
             label_style=ft.TextStyle(color="#666666"),
+            autofill_hints=[ft.AutofillHint.PASSWORD],
         )
 
         self.login_button = ft.Button(
