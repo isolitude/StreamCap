@@ -38,7 +38,8 @@ elif getattr(sys, "frozen", False) and sys.platform == "win32":
     user_data_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_NAME
 else:
     resource_dir = _EXECUTABLE_DIR
-    user_data_dir = _EXECUTABLE_DIR
+    env_data_dir = os.environ.get("STREAMCAP_DATA_DIR")
+    user_data_dir = Path(env_data_dir).resolve() if env_data_dir else _EXECUTABLE_DIR
 
 if getattr(sys, "frozen", False) and sys.platform == "win32":
     default_recordings_dir = _EXECUTABLE_DIR / "downloads"
