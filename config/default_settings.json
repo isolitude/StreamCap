@@ -70,5 +70,9 @@
     "theme_mode": "light",
     "platform_max_concurrent_requests": "3",
     "last_route": "/home",
-    "check_live_on_browser_refresh": false
+    "check_live_on_browser_refresh": false,
+    "remote_backend_enabled": false,
+    "remote_backend_url": "https://streamcap.jp.insolitude.me",
+    "remote_backend_api_key": "",
+    "remote_backend_auto_download": true
 }

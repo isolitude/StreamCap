@@ -20,6 +20,7 @@ class Recording:
         only_notify_no_record,
         flv_use_direct_download,
         video_bitrate=None,
+        recording_backend="default",
     ):
         """
         Initialize a recording object.
@@ -58,6 +59,8 @@ class Recording:
         self.only_notify_no_record = only_notify_no_record
         self.flv_use_direct_download = flv_use_direct_download
         self.video_bitrate = video_bitrate
+        self.recording_backend = recording_backend or "default"
+        self.remote_task_id = None
         self.scheduled_time_range = None
         self.title = f"{streamer_name} - {self.quality}"
         self.speed = "X KB/s"
@@ -108,6 +111,7 @@ class Recording:
             "only_notify_no_record": self.only_notify_no_record,
             "flv_use_direct_download": self.flv_use_direct_download,
             "video_bitrate": self.video_bitrate,
+            "recording_backend": self.recording_backend,
         }
 
     @classmethod
@@ -130,6 +134,7 @@ class Recording:
             data.get("only_notify_no_record"),
             data.get("flv_use_direct_download"),
             data.get("video_bitrate"),
+            data.get("recording_backend", "default"),
         )
         recording.title = data.get("title", recording.title)
         recording.display_title = data.get("display_title", recording.title)

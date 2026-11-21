@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..recording.remote_client import RemoteBackendConfig
 from ..runtime.paths import default_recordings_dir
 
 
@@ -11,6 +12,7 @@ class SettingsConfig:
         cm = services.config_manager
         self.user_config: dict = cm.load_user_config() or {}
         self.default_config: dict = cm.load_default_config() or {}
+        self.apply_remote_env_defaults(self.user_config)
         self.cookies_config: dict = cm.load_cookies_config() or {}
         self.accounts_config: dict = cm.load_accounts_config() or {}
         self.language_option: dict = cm.load_language_config() or {}
@@ -22,6 +24,19 @@ class SettingsConfig:
             self.language_code = next(iter(self.language_option.values()))
         else:
             self.language_code = "zh_CN"
+
+    @staticmethod
+    def apply_remote_env_defaults(user_config: dict) -> None:
+        """Seed unset remote backend fields from container/process env vars."""
+        env_cfg = RemoteBackendConfig.from_user_config(user_config)
+        if "remote_backend_enabled" not in user_config:
+            user_config["remote_backend_enabled"] = env_cfg.enabled
+        if not user_config.get("remote_backend_url"):
+            user_config["remote_backend_url"] = env_cfg.base_url
+        if not user_config.get("remote_backend_api_key") and env_cfg.api_key:
+            user_config["remote_backend_api_key"] = env_cfg.api_key
+        if "remote_backend_auto_download" not in user_config:
+            user_config["remote_backend_auto_download"] = env_cfg.auto_download
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
         return self.user_config.get(key, self.default_config.get(key, default))
@@ -44,6 +59,7 @@ class SettingsConfig:
 
     def adopt_user_config(self, user_config: dict) -> None:
         """Replace ``user_config`` reference (used when the UI rebuilds it)."""
+        self.apply_remote_env_defaults(user_config)
         self.user_config = user_config
 
     def adopt_cookies_config(self, cookies_config: dict) -> None:

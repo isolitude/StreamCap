@@ -21,30 +21,73 @@ RUN pip install --no-cache-dir ./streamget
 # 然后安装其他依赖（streamget 已安装，会被跳过）
 RUN pip install --no-cache-dir -r requirements-web.txt
 
-# 先复制构建时需要的字体脚本和种子字体清单，使字体步骤不依赖全部源码上下文
+# 先复制构建时需要的字体脚本，使字体回退步骤不依赖全部源码上下文
 COPY scripts/download_fallback_fonts.py ./scripts/download_fallback_fonts.py
-# 复用本地已有镜像的 fallback 字体作为构建种子（避免 gstatic 批量下载偶发失败导致构建中断）。
-# 字体层位于 COPY . . 之前 → 之后任何源码/资产变更都不会触发字体重下/重传。
-# 若本机无该镜像（全新环境），此 COPY 会失败；届时改为去掉本行、保留下方在线下载兜底即可。
-COPY --from=streamcap-streamcap:latest /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/ /tmp/seed_fonts/
-# 种子字体已包含全部 fallback 字体，直接注入 flet_web;仅当种子为空时才回退在线下载
-RUN if [ -n "$(ls -A /tmp/seed_fonts 2>/dev/null)" ]; then \
-        mkdir -p /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts && \
-        cp -rn /tmp/seed_fonts/* /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/ && \
-        echo "Seeded fallback fonts from previous image ($(ls /tmp/seed_fonts | wc -l) families)"; \
-    else \
-        echo "Seed fonts empty, falling back to online download"; \
+# 把本地 fallback 字体缓存烘焙进镜像的 flet_web 包，供 no_cdn web 模式离线提供中文等
+# 回退子集。这些字体位于 build context 的 assets/fonts/（已不在 .dockerignore 中排除）。
+# 放在 COPY . . 之前 → 字体层在最前面，后续源码/资产变更不会触发这层重传。
+# 复制到 flet_web/web/assets/fonts/:Flet 在 no_cdn 模式下正是从该目录提供 /assets/fonts/ 路径。
+RUN mkdir -p /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts
+COPY assets/fonts/ /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/
+# 若本地缓存缺失(全新环境),则回退到在线下载补齐(仅 fallback 场景,正常构建走本地缓存)。
+# 以 notosanssc 目录是否存在来判断 fallback 字体是否就位。
+RUN if [ ! -d /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/notosanssc ]; then \
+        echo "Local fallback font cache empty, downloading online"; \
         python3 scripts/download_fallback_fonts.py --out /tmp/flutter_fonts && \
-        cp -rn /tmp/flutter_fonts/* /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/; \
-    fi; \
-    rm -rf /tmp/flutter_fonts /tmp/seed_fonts
+        cp -rn /tmp/flutter_fonts/* /usr/local/lib/python3.12/site-packages/flet_web/web/assets/fonts/ && \
+        rm -rf /tmp/flutter_fonts; \
+    fi
 
 # 复制其他项目文件
 COPY . .
 # 提示：在这里创建目录其实没用，因为第二阶段是干净的镜像，建议在第二阶段创建
 
-# --- 第二阶段: 最终生产镜像 ---
-FROM python:3.12-slim
+# --- 可选目标: 精简无头远程录制后端 (target: headless) ---
+FROM python:3.12-slim AS headless
+
+ARG PUID=1000
+ARG PGID=1000
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    tzdata \
+    curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo "$TZ" > /etc/timezone
+
+COPY streamget/ ./streamget/
+COPY requirements-headless.txt .
+RUN pip install --no-cache-dir ./streamget \
+    && pip install --no-cache-dir -r requirements-headless.txt
+
+COPY app/ ./app/
+COPY config/default_settings.json config/language.json config/version.json ./config/
+COPY locales/ ./locales/
+
+RUN groupadd -g ${PGID} appgroup && \
+    useradd -u ${PUID} -g appgroup -s /bin/sh -m appuser && \
+    mkdir -p /app/logs /app/downloads /app/config && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+ENV STREAMCAP_DATA_DIR=/app
+ENV STREAMCAP_RUN_DIR=/app
+ENV STREAMCAP_HOST=0.0.0.0
+ENV STREAMCAP_PORT=8000
+EXPOSE 8000
+
+CMD ["python", "-m", "app.api.remote_server"]
+
+# --- 默认生产镜像: Web 前端 (包含远程后端客户端支持) ---
+FROM python:3.12-slim AS web
 
 # 1. 定义构建参数，允许在 docker-compose 中传入宿主机的 UID/GID
 ARG PUID=1000

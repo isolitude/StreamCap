@@ -76,6 +76,7 @@ def get_route_handler() -> dict[str, str]:
         "/": "home",
         "/home": "home",
         "/recordings": "recordings",
+        "/remote": "remote",
         "/settings": "settings",
         "/storage": "storage",
         "/about": "about",

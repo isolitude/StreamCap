@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from datetime import date, datetime
+from pathlib import Path
 from typing import TypeVar
 
 from ...messages import desktop_notify, message_pusher
@@ -18,6 +19,7 @@ from ..media.direct_downloader import DirectStreamDownloader
 from ..platforms import platform_handlers
 from ..platforms.platform_handlers import StreamData
 from ..runtime.process_manager import BackgroundService
+from .remote_client import RemoteBackendClient, RemoteBackendConfig, RemoteBackendError
 
 T = TypeVar("T")
 
@@ -848,3 +850,92 @@ class LiveStreamRecorder:
         self.should_stop = True
 
         logger.info(f"Set should_stop from {old_value} to {self.should_stop} for recorder: {self.recording.rec_id}")
+
+    async def monitor_remote_task(
+        self,
+        remote_cfg: RemoteBackendConfig,
+        task: dict,
+        record_name: str,
+    ) -> bool:
+        """Poll a remote recording task until completion/stop and optionally pull files locally."""
+        task_id = task["task_id"]
+        client = RemoteBackendClient(remote_cfg.base_url, remote_cfg.api_key)
+        self.services.recording_manager.active_recorders[self.recording.rec_id] = self
+        self.recording.remote_task_id = task_id
+        self.recording.status_info = RecordingStatus.RECORDING
+        self.recording_start_time = time.time()
+        self.should_stop = False
+
+        stop_sent = False
+        latest_task = task
+        try:
+            while True:
+                if (self.should_stop or self.recording.force_stop or not self.services.recording_enabled) and not stop_sent:
+                    stop_sent = True
+                    try:
+                        latest_task = await client.stop_task(task_id)
+                    except RemoteBackendError as exc:
+                        logger.warning(f"Failed requesting remote stop for {task_id}: {exc}")
+
+                await asyncio.sleep(5)
+                try:
+                    latest_task = await client.get_task(task_id)
+                except RemoteBackendError as exc:
+                    if exc.status_code == 404:
+                        logger.warning(f"Remote task {task_id} disappeared")
+                        break
+                    logger.warning(f"Polling remote task {task_id} failed: {exc}")
+                    continue
+
+                remote_files = latest_task.get("files") or []
+                total_bytes = sum(int(f.get("size_bytes") or 0) for f in remote_files)
+                self.recording.speed = f"Remote {total_bytes / (1024 * 1024):.1f} MB"
+                self.services.broadcast_card_update(self.recording)
+
+                if latest_task.get("status") in {"completed", "stopped", "error"}:
+                    break
+
+            await self.remove_active_recorder()
+            self.recording.is_recording = False
+            self.recording.force_stop = False
+
+            remote_files = latest_task.get("files") or []
+            if remote_cfg.auto_download and remote_files:
+                anchor = utils.clean_name(latest_task.get("anchor_name") or record_name, "LiveRoom") or "LiveRoom"
+                platform_name = latest_task.get("platform") or self.platform or "Remote"
+                local_dir = Path(self.output_dir)
+                if self.user_config.get("folder_name_platform"):
+                    local_dir = local_dir / platform_name
+                if self.user_config.get("folder_name_author"):
+                    local_dir = local_dir / anchor
+                local_dir.mkdir(parents=True, exist_ok=True)
+                self.recording.recording_dir = str(local_dir)
+                self.services.run_coro(self.services.recording_manager.persist_recordings())
+
+                for f_item in remote_files:
+                    fname = f_item["filename"]
+                    dl_target = f_item.get("download_url") or f_item.get("api_path") or f"/api/tasks/{task_id}/files/{fname}"
+                    expected = f_item.get("size_bytes")
+                    try:
+                        await client.download_file(dl_target, local_dir / fname, expected_size=expected)
+                    except Exception as exc:
+                        logger.error(f"Auto-download failed for {task_id}/{fname}: {exc}")
+
+            if latest_task.get("status") == "error" and not remote_files:
+                err_msg = latest_task.get("error_message") or self._.get("record_stream_error", "Recording error")
+                self._handle_recording_error(record_name, str(err_msg))
+                return False
+
+            await self._handle_recording_finished(record_name)
+            if not self.recording.manually_stopped:
+                await self.recheck_live_status()
+            return True
+        except Exception as exc:
+            logger.error(f"Remote recording monitor error for {task_id}: {exc}")
+            await self.remove_active_recorder()
+            self.recording.is_recording = False
+            self._handle_recording_error(record_name, str(exc))
+            return False
+        finally:
+            self.recording.remote_task_id = None
+            self.recording.speed = "X KB/s"

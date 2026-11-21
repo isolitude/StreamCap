@@ -331,6 +331,19 @@ class RecordingDialog:
             width=500,
         )
 
+        backend_dropdown = ft.Dropdown(
+            label=self._["recording_backend"],
+            options=[
+                ft.dropdown.DropdownOption("default", self._["backend_default"]),
+                ft.dropdown.DropdownOption("local", self._["backend_local"]),
+                ft.dropdown.DropdownOption("remote", self._["backend_remote"]),
+            ],
+            border_radius=5,
+            filled=False,
+            value=initial_values.get("recording_backend") or "default",
+            width=500,
+        )
+
         hint_text_dict = {
             "en": "Example:\n0，https://v.douyin.com/AbcdE，nickname1\n0，https://v.douyin.com/EfghI，nickname2\n\nPS: "
             "0=original image or Blu ray, 1=ultra clear, 2=high-definition, 3=standard definition, 4=smooth\n",
@@ -385,6 +398,7 @@ class RecordingDialog:
                                         *time_rows,
                                         message_push_dropdown,
                                         no_record_dropdown,
+                                        backend_dropdown,
                                     ],
                                     tight=True,
                                     spacing=10,
@@ -469,6 +483,7 @@ class RecordingDialog:
                         "enabled_message_push": message_push_dropdown.value == "true",
                         "only_notify_no_record": no_record_dropdown.value == "true",
                         "flv_use_direct_download": flv_use_direct_download_dropdown.value == "true",
+                        "recording_backend": backend_dropdown.value or "default",
                     }
                 ]
 

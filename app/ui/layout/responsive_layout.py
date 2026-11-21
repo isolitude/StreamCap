@@ -21,12 +21,13 @@ def setup_responsive_layout(page: ft.Page, app: App) -> None:
             destinations=[
                 ft.NavigationBarDestination(icon=ft.Icons.HOME, label=_["home"]),
                 ft.NavigationBarDestination(icon=ft.Icons.DASHBOARD_ROUNDED, label=_["recordings"]),
+                ft.NavigationBarDestination(icon=ft.Icons.CLOUD_DOWNLOAD, label=_["remote"]),
                 ft.NavigationBarDestination(icon=ft.Icons.SETTINGS, label=_["settings"]),
                 ft.NavigationBarDestination(icon=ft.Icons.DRIVE_FILE_MOVE, label=_["storage"]),
                 ft.NavigationBarDestination(icon=ft.Icons.INFO, label=_["about"]),
             ],
             on_change=lambda e: page.go(
-                f"/{['home', 'recordings', 'settings', 'storage', 'about'][e.control.selected_index]}"
+                f"/{['home', 'recordings', 'remote', 'settings', 'storage', 'about'][e.control.selected_index]}"
             ),
         )
 

@@ -29,7 +29,7 @@
 # Exclude large desktop-only images from the Docker context, but keep the web sidebar logo
 assets/images/*
 !assets/images/logo-mark.svg
-# Offline fallback fonts are downloaded during the build (scripts/download_fallback_fonts.py);
-# exclude any locally-downloaded copies to keep the build context lean and non-stale.
-# (AlibabaPuHuiTi is kept — it is an app font baked into the image via COPY . .)
-assets/fonts/noto*/
+# Local fallback font cache (assets/fonts/noto* etc.) is baked into the image at build time:
+# Dockerfile copies assets/fonts/ into flet_web/web/assets/fonts/ so no_cdn web mode serves the
+# Chinese/etc. fallback subsets offline. Keep them in the context so that COPY can include them.
+# (AlibabaPuHuiTi is also baked in via that same COPY.)

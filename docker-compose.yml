@@ -16,6 +16,10 @@ services:
     environment:
       - PORT=${PORT:-6006}
       - TZ=${TZ:-Asia/Shanghai}
+      - STREAMCAP_REMOTE_ENABLED=${STREAMCAP_REMOTE_ENABLED:-false}
+      - STREAMCAP_REMOTE_URL=${STREAMCAP_REMOTE_URL:-https://streamcap.jp.insolitude.me}
+      - STREAMCAP_API_KEY=${STREAMCAP_API_KEY:-}
+      - STREAMCAP_REMOTE_AUTO_DOWNLOAD=${STREAMCAP_REMOTE_AUTO_DOWNLOAD:-true}
     volumes:
       - ./logs:/app/logs
       - ./config:/app/config
@@ -51,6 +55,38 @@ services:
       - ./.env:/app/.env
     depends_on:
       - streamcap
+    networks:
+      - streamcap-network
+
+  remote_recorder:
+    profiles: ["headless"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: headless
+      args:
+        - PUID=${CURRENT_UID:-1000}
+        - PGID=${CURRENT_GID:-1000}
+        - http_proxy=${http_proxy:-}
+        - https_proxy=${https_proxy:-}
+        - no_proxy=${no_proxy:-localhost,127.0.0.1}
+    ports:
+      - "${STREAMCAP_PORT:-8000}:${STREAMCAP_PORT:-8000}"
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
+      - STREAMCAP_API_KEY=${STREAMCAP_API_KEY:-}
+      - STREAMCAP_MAX_STORAGE_BYTES=${STREAMCAP_MAX_STORAGE_BYTES:-10737418240}
+      - STREAMCAP_MIN_FREE_BYTES=${STREAMCAP_MIN_FREE_BYTES:-3221225472}
+      - STREAMCAP_RETENTION_SECONDS=${STREAMCAP_RETENTION_SECONDS:-86400}
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - /media/iso/hdd3/steamcap/remote_tasks:/app/downloads/remote_tasks
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:${STREAMCAP_PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - streamcap-network
 

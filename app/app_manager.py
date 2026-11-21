@@ -15,6 +15,7 @@ from .ui.navigation.sidebar import LeftNavigationMenu, NavigationSidebar
 from .ui.views.about_view import AboutPage
 from .ui.views.home_view import HomePage
 from .ui.views.recordings_view import RecordingsPage
+from .ui.views.remote_view import RemotePage
 from .ui.views.settings_view import SettingsPage
 from .ui.views.storage_view import StoragePage
 from .utils.logger import logger
@@ -57,6 +58,7 @@ class App:
         self.language_code = self.settings.language_code
         self.about = AboutPage(self)
         self.recordings = RecordingsPage(self)
+        self.remote = RemotePage(self)
         self.home = HomePage(self)
         self.storage = StoragePage(self)
         self.pages = self.initialize_pages()
@@ -159,6 +161,7 @@ class App:
             "settings": self.settings,
             "home": self.home,
             "recordings": self.recordings,
+            "remote": self.remote,
             "storage": self.storage,
             "about": self.about,
         }

@@ -47,6 +47,8 @@ class CardDialog(ft.AlertDialog):
         if not should_push_message and recording.enabled_message_push:
             message_push = self._["disabled"] + f" ({self._['not_config_tip']})"
         only_notify_no_record = self._["enabled"] if recording.only_notify_no_record else self._["disabled"]
+        backend_val = getattr(recording, "recording_backend", "default") or "default"
+        backend_label = self._.get(f"backend_{backend_val}", backend_val)
 
         dialog_content = ft.Column(
             [
@@ -65,6 +67,7 @@ class CardDialog(ft.AlertDialog):
                 ft.Text(f"{self._['scheduled_time_range']}: {scheduled_time_range}", size=14),
                 ft.Text(f"{self._['message_push']}: {message_push}", size=14),
                 ft.Text(f"{self._['only_notify_no_record']}: {only_notify_no_record}", size=14),
+                ft.Text(f"{self._['recording_backend']}: {backend_label}", size=14),
                 ft.Text(f"{self._['save_path']}: {save_path}", size=14, selectable=True),
                 ft.Text(f"{self._['recording_status']}: {recording_status_info}", size=14),
             ],

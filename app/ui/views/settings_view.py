@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import flet as ft
 
+from ...core.recording.remote_client import RemoteBackendClient, RemoteBackendConfig, RemoteBackendError
 from ...core.runtime.paths import default_recordings_dir
 from ...core.runtime.scheduled_shutdown import MAX_QUICK_SHUTDOWN_HOURS
 from ...models.media.audio_format_model import AudioFormat
@@ -538,9 +539,120 @@ class SettingsPage(PageBase):
                     ],
                     is_mobile,
                 ),
+                self.create_remote_backend_group(is_mobile),
             ],
             spacing=10,
             scroll=ft.ScrollMode.AUTO,
+        )
+
+    def create_remote_backend_group(self, is_mobile: bool):
+        remote_cfg = RemoteBackendConfig.from_user_config(self.user_config)
+        status_text = ft.Text("", size=12, selectable=True)
+
+        async def test_connection(_):
+            cur = RemoteBackendConfig.from_user_config(self.user_config)
+            if not cur.is_configured:
+                status_text.value = self._["remote_config_missing"]
+                status_text.color = ft.Colors.RED
+                status_text.update()
+                return
+            client = RemoteBackendClient(cur.base_url, cur.api_key)
+            try:
+                sys_info = await client.get_system()
+                disk = sys_info.get("disk") or {}
+                status_text.value = self._["remote_connect_success"].format(
+                    free_gb=f"{disk.get('free_bytes', 0) / (1024**3):.2f}",
+                    used_gb=f"{disk.get('used_bytes', 0) / (1024**3):.2f}",
+                    max_gb=f"{disk.get('max_storage_bytes', 0) / (1024**3):.1f}",
+                    active=sys_info.get("active_tasks", 0),
+                    max_tasks=sys_info.get("max_concurrent_tasks", 4),
+                )
+                status_text.color = ft.Colors.GREEN
+            except RemoteBackendError as exc:
+                status_text.value = self._["remote_connect_failed"].format(error=str(exc))
+                status_text.color = ft.Colors.RED
+            status_text.update()
+
+        async def sync_cookies(_):
+            cur = RemoteBackendConfig.from_user_config(self.user_config)
+            if not cur.is_configured:
+                status_text.value = self._["remote_config_missing"]
+                status_text.color = ft.Colors.RED
+                status_text.update()
+                return
+            client = RemoteBackendClient(cur.base_url, cur.api_key)
+            try:
+                res = await client.sync_cookies(self.cookies_config)
+                status_text.value = self._["remote_sync_success"].format(
+                    count=len(res.get("updated_platforms") or [])
+                )
+                status_text.color = ft.Colors.GREEN
+            except RemoteBackendError as exc:
+                status_text.value = self._["remote_connect_failed"].format(error=str(exc))
+                status_text.color = ft.Colors.RED
+            status_text.update()
+
+        actions_row = ft.Row(
+            [
+                ft.Button(
+                    content=self._["remote_test_connection"],
+                    icon=ft.Icons.CLOUD_SYNC,
+                    on_click=test_connection,
+                ),
+                ft.Button(
+                    content=self._["remote_sync_cookies"],
+                    icon=ft.Icons.COOKIE,
+                    on_click=sync_cookies,
+                ),
+            ],
+            spacing=10,
+        )
+
+        return self.create_setting_group(
+            self._["remote_backend_settings"],
+            self._["remote_backend_desc"],
+            [
+                self.create_setting_row(
+                    self._["remote_backend_enabled"],
+                    ft.Switch(
+                        value=remote_cfg.enabled,
+                        data="remote_backend_enabled",
+                        on_change=self.on_change,
+                    ),
+                ),
+                self.create_setting_row(
+                    self._["remote_backend_url"],
+                    ft.TextField(
+                        value=remote_cfg.base_url,
+                        width=320,
+                        data="remote_backend_url",
+                        on_change=self.on_change,
+                        hint_text="https://streamcap.jp.insolitude.me",
+                    ),
+                ),
+                self.create_setting_row(
+                    self._["remote_backend_api_key"],
+                    ft.TextField(
+                        value=remote_cfg.api_key,
+                        width=320,
+                        password=True,
+                        can_reveal_password=True,
+                        data="remote_backend_api_key",
+                        on_change=self.on_change,
+                    ),
+                ),
+                self.create_setting_row(
+                    self._["remote_backend_auto_download"],
+                    ft.Switch(
+                        value=remote_cfg.auto_download,
+                        data="remote_backend_auto_download",
+                        on_change=self.on_change,
+                    ),
+                ),
+                self.create_setting_row("", actions_row),
+                self.create_setting_row("", status_text),
+            ],
+            is_mobile,
         )
 
     def create_push_settings_tab(self):

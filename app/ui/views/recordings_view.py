@@ -500,6 +500,7 @@ class RecordingsPage(PageBase):
                     only_notify_no_record=recording_info["only_notify_no_record"],
                     flv_use_direct_download=recording_info["flv_use_direct_download"],
                     video_bitrate=recording_info["video_bitrate"],
+                    recording_backend=recording_info.get("recording_backend", "default"),
                 )
             else:
                 recording = Recording(

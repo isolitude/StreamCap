@@ -10,6 +10,7 @@ from ...utils import utils
 from ...utils.logger import logger
 from ..platforms.platform_handlers import get_platform_info
 from ..runtime.process_manager import BackgroundService
+from .remote_client import RemoteBackendClient, RemoteBackendConfig, RemoteBackendError
 from .stream_manager import LiveStreamRecorder
 
 
@@ -332,6 +333,60 @@ class RecordingManager:
 
         semaphore = self.platform_semaphores[platform_key]
         recorder = LiveStreamRecorder(self.services, recording, recording_info)
+
+        remote_cfg = RemoteBackendConfig.from_user_config(self.settings.user_config)
+        backend_pref = getattr(recording, "recording_backend", "default") or "default"
+        use_remote = (backend_pref == "remote") or (backend_pref == "default" and remote_cfg.enabled)
+
+        if use_remote and not recording.only_notify_no_record:
+            if not remote_cfg.is_configured:
+                logger.error("Remote recording backend is selected but URL or API key is missing")
+                recording.is_checking = False
+                recording.status_info = RecordingStatus.RECORDING_ERROR
+                self.services.broadcast_card_update(recording)
+                self.services.broadcast_pubsub("update", recording)
+                return
+
+            client = RemoteBackendClient(remote_cfg.base_url, remote_cfg.api_key)
+            try:
+                async with semaphore:
+                    remote_task = await client.create_task(
+                        url=recording.url,
+                        quality=recording.quality,
+                        fmt=(recording.record_format or "ts").lower(),
+                        segment_record=bool(recording.segment_record),
+                        segment_time=int(recording.segment_time or 1800),
+                        flv_direct_download=bool(recording.flv_use_direct_download),
+                    )
+            except RemoteBackendError as exc:
+                recording.is_checking = False
+                if exc.status_code == 409:
+                    recording.is_recording = False
+                    recording.is_live = False
+                    recording.status_info = RecordingStatus.MONITORING
+                else:
+                    logger.error(f"Remote backend start failed for {recording.url}: {exc}")
+                    recording.status_info = RecordingStatus.LIVE_STATUS_CHECK_ERROR
+                self.services.broadcast_card_update(recording)
+                self.services.broadcast_pubsub("update", recording)
+                return
+
+            recording.is_checking = False
+            recording.live_title = remote_task.get("live_title")
+            anchor_name = remote_task.get("anchor_name") or recording.streamer_name
+            if recording.streamer_name.strip() == self._["live_room"] and anchor_name:
+                recording.streamer_name = anchor_name
+            recording.title = f"{recording.streamer_name} - {self._[recording.quality]}"
+            recording.display_title = f"[{self._['is_live']}] {recording.title}"
+            recording.is_live = True
+            recording.status_info = RecordingStatus.PREPARING_RECORDING
+            recording.loop_time_seconds = self.loop_time_seconds
+            self.start_update(recording)
+            self.services.run_coro(recorder.monitor_remote_task(remote_cfg, remote_task, recording.streamer_name))
+            self.services.broadcast_card_update(recording)
+            self.services.broadcast_pubsub("update", recording)
+            return
+
         async with semaphore:
             stream_info = await recorder.fetch_stream()
             logger.info(f"Stream Data: {stream_info}")
